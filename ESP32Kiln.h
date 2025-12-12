@@ -21,8 +21,8 @@ const int MAX_Prog_File_Size = 10240;  // maximum file size (bytes) that can be 
 */
 
 // #define PID_QUICKPID
-#define PID_PID_V1
-// #define PID_AUTOTUNEPID
+// #define PID_PID_V1
+#define PID_AUTOTUNEPID
 
 // #define EMR_RELAY_PIN 21
 #define SSR1_RELAY_PIN 19

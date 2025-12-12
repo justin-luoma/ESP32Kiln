@@ -433,8 +433,7 @@ void Program_calculate_steps(boolean prg_start = false) {
           DBG dbgLog(LOG_DEBUG, "[DBG] First step.\n");
           set_temp = kiln_temp;
 #if defined(PID_AUTOTUNEPID)
-          float temp = set_temp;
-          KilnPID.setSetpoint(temp);
+          KilnPID.setSetpoint(set_temp);
 #endif
           // set_temp = Program_run[Program_run_step].temp;
           temp_incr = (float)(Program_run[Program_run_step].temp - kiln_temp) / (Program_run[Program_run_step].togo * 60);
@@ -448,8 +447,7 @@ void Program_calculate_steps(boolean prg_start = false) {
         next_step_end = step_start + Program_run[Program_run_step].dwell * 60;
         set_temp = Program_run[Program_run_step].temp;
 #if defined(PID_AUTOTUNEPID)
-          float temp = set_temp;
-        KilnPID.setSetpoint(temp);
+        KilnPID.setSetpoint(set_temp);
 #endif
         DBG dbgLog(LOG_DEBUG, "[PRG] Next step:%d Start step:%d Togo:%d Run_step:%d/%d Set_temp:%f\n", next_step_end, step_start, Program_run[Program_run_step].dwell, Program_run_step, Program_run_size, set_temp);
         Program_recalculate_ETA(true);  // recalculate ETA for dwell
@@ -517,7 +515,8 @@ void START_Program() {
 #elif defined(PID_AUTOTUNEPID)
   KilnPID.setSetpoint(kiln_temp);
   KilnPID.setOscillationMode(OscillationMode::Half);
-  KilnPID.setOperationalMode(OperationalMode::Normal);
+  KilnPID.setOperationalMode(OperationalMode::Auto);
+  KilnPID.setOscillationMode(true);
 #endif
 
   DBG dbgLog(LOG_INFO, "[PRG] Trying to start log - window size:%d\n", Prefs[PRF_LOG_WINDOW].value.uint16);
@@ -621,39 +620,32 @@ void Program_Loop(void *parameter) {
 
         DBG dbgLog(LOG_INFO, "[PRG] Now:%d windowStartTime:%d nextSwitchTime:%d Now-window:%d Pid_out:%.2f SSR_On:%d\n", now, windowStartTime, nextSwitchTime, (long)(millis() - windowStartTime), pid_out, SSR_On);
 
-        if (!SSR_On && ((pid_out * PID_WINDOW_DIVIDER) > (long)(now - windowStartTime))) {
+        if ((pid_out * PID_WINDOW_DIVIDER) > (long)(now - windowStartTime)) {
           if (now > nextSwitchTime) {
             nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
             Enable_SSR();
           }
-        } else {
-          if (SSR_On) {
-            nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
-          }
+        } else if (SSR_On && pid_out == 0) {
+          nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
           Disable_SSR();
         }
 #endif
 #ifdef PID_AUTOTUNEPID
         if (Program_run_state == PR_RUNNING || Program_run_state == PR_PAUSED || Program_run_state == PR_THRESHOLD || Program_run_state == PR_CALIBRATE) {
-          DBG dbgLog(LOG_DEBUG, "[PRG] kiln_temp: %.2f\n", kiln_temp);
-          float input = kiln_temp;
-          KilnPID.update(input);
-          float output = KilnPID.getOutput();
-          pid_out = output;
+          KilnPID.update(kiln_temp);
+          pid_out = KilnPID.getOutput();
 
-          DBG dbgLog(LOG_INFO, "[PRG] Now:%d nextSwitchTime:%d Pid_out:%.2f SSR_On:%d\n", now, nextSwitchTime, output, SSR_On);
+          DBG dbgLog(LOG_INFO, "[PRG] Now:%d nextSwitchTime:%d Pid_out:%.2f SSR_On:%d\n", now, nextSwitchTime, pid_out, SSR_On);
           // if ((long)(now - windowStartTime) > Prefs[PRF_PID_WINDOW].value.uint16) {
           // windowStartTime += Prefs[PRF_PID_WINDOW].value.uint16;
           // }
-          if (!SSR_On && output > 0) {
+          if (pid_out > 0) {
             if (now > nextSwitchTime) {
               nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
               Enable_SSR();
             }
-          } else {
-            if (SSR_On) {
-              nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
-            }
+          } else if (SSR_On && pid_out == 0) {
+            nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
             Disable_SSR();
           }
 #endif
