@@ -459,8 +459,8 @@ void handleUpload(AsyncWebServerRequest *request, String filename, size_t index,
       abort = true;  // this will never happend...
       request->redirect("/programs");
     } else {  // Everything went fine - commit file
-      Generate_INDEX();
       request->redirect("/programs/index.html");
+      Generate_INDEX();
     }
   }
 }
@@ -764,21 +764,21 @@ void SETUP_WebServer(void) {
 
 
   if (Prefs[PRF_HTTP_JS_LOCAL].value.str) {
-    // server.on("/js/jquery-3.5.1.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //   AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/js/jquery-3.5.1.min.js", "text/javascript");
+    // server.on("/js/jquery-3.7.1.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
+    //   AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/js/jquery-3.7.1.min.js", "text/javascript");
     //   response->addHeader("Content-Encoding", "gzip");
     //   request->send(response);
     // });
-    // server.on("/js/Chart.2.9.3.bundle.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //   AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/js/Chart.2.9.3.bundle.min.js", "text/javascript");
-    //   response->addHeader("Content-Encoding", "gzip");
-    //   request->send(response);
-    // });
-    // server.on("/js/chartjs-datasource.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
-    //   AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/js/chartjs-datasource.min.js", "text/javascript");
-    //   response->addHeader("Content-Encoding", "gzip");
-    //   request->send(response);
-    // });
+    server.on("/js/Chart.2.9.3.bundle.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
+      AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/js/Chart.2.9.3.bundle.min.js", "text/javascript");
+      response->addHeader("Content-Encoding", "gzip");
+      request->send(response);
+    });
+    server.on("/js/chartjs-datasource.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
+      AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/js/chartjs-datasource.min.js", "text/javascript");
+      response->addHeader("Content-Encoding", "gzip");
+      request->send(response);
+    });
   } else {
     server.on("/js/jquery-3.7.1.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
       request->redirect(JS_JQUERY);

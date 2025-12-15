@@ -123,6 +123,13 @@ void Prefs_updated_hook() {
 #if defined(PID_QUICKPID) || defined(PID_PID_V1)
     KilnPID.SetTunings(Prefs[PRF_PID_KP].value.vfloat, Prefs[PRF_PID_KI].value.vfloat, Prefs[PRF_PID_KD].value.vfloat);  // set actual PID parameters
 #endif
+#ifdef PID_QUICKPID
+    KilnPID.SetOutputLimits(0, Prefs[PRF_PID_WINDOW].value.uint16);
+    KilnPID.SetSampleTimeUs(Prefs[PRF_PID_MEASURE_INTERVAL].value.uint16 * 1000);
+#elif defined(PID_PID_V1)
+    KilnPID.SetOutputLimits(0, Prefs[PRF_PID_WINDOW].value.uint16);
+    KilnPID.SetSampleTime(Prefs[PRF_PID_MEASURE_INTERVAL].value.uint16);
+#endif
 #ifdef PID_AUTOTUNEPID
     KilnPID.setManualGains(Prefs[PRF_PID_KP].value.vfloat, Prefs[PRF_PID_KI].value.vfloat, Prefs[PRF_PID_KD].value.vfloat);
 #endif

@@ -21,8 +21,8 @@ const int MAX_Prog_File_Size = 10240;  // maximum file size (bytes) that can be 
 */
 
 // #define PID_QUICKPID
-// #define PID_PID_V1
-#define PID_AUTOTUNEPID
+#define PID_PID_V1
+// #define PID_AUTOTUNEPID
 
 // #define EMR_RELAY_PIN 21
 #define SSR1_RELAY_PIN 19
@@ -51,11 +51,11 @@ volatile unsigned long windowStartTime, nextSwitchTime, now;
 
 #ifdef PID_QUICKPID
 float int_temp = 20, case_temp = 20;
-float set_temp, pid_out, kiln_temp = 20;
+float set_temp = 0, pid_out, kiln_temp = 20;
 #include <QuickPID.h>
 QuickPID KilnPID(&kiln_temp, &pid_out, &set_temp, 0, 0, 0,
-                 KilnPID.pMode::pOnError,
-                 KilnPID.dMode::dOnError,
+                 KilnPID.pMode::pOnMeas,
+                 KilnPID.dMode::dOnMeas,
                  KilnPID.iAwMode::iAwClamp,
                  KilnPID.Action::direct);
 #endif
@@ -70,7 +70,7 @@ PID KilnPID(&kiln_temp, &pid_out, &set_temp, 0, 0, 0, P_ON_M, DIRECT);
 #ifdef PID_AUTOTUNEPID
 #include <AutoTunePID.h>
 float set_temp, pid_out, kiln_temp = 20;
-AutoTunePID KilnPID(0, 1, TuningMethod::Manual);
+AutoTunePID KilnPID(0, 5000, TuningMethod::ZieglerNichols);
 #endif
 
 /*
@@ -378,7 +378,7 @@ const char *PDate = "2025.07.23";
 WiFiUDP udpClient;
 Syslog syslog(udpClient, SYSLOG_PROTO_IETF);
 
-#define JS_JQUERY "https://code.jquery.com/jquery-3.5.1.min.js"
+#define JS_JQUERY "https://code.jquery.com/jquery-3.7.1.min.js"
 #define JS_CHART "https://cdn.jsdelivr.net/npm/chart.js@2.9.3/dist/Chart.bundle.min.js"
 #define JS_CHART_DS "https://cdn.jsdelivr.net/npm/chartjs-plugin-datasource"
 
@@ -395,6 +395,6 @@ uint8_t Cleanup_program(uint8_t err = 0);
 uint8_t Load_program(char *file = 0);
 void ABORT_Program(uint8_t error = 0);
 
-#if (defined (PID_PID_V1) && defined (PID_QUICKPID)) || (defined(PID_PID_V1) && defined(PID_AUTOTUNEPID)) || (defined(PID_AUTOTUNEPID) && defined(PID_QUICKPID))
+#if ((defined(PID_PID_V1) && defined(PID_QUICKPID)) || (defined(PID_PID_V1) && defined(PID_AUTOTUNEPID)) || (defined(PID_AUTOTUNEPID) && defined(PID_QUICKPID)))
 #error Multiple PID types defined
 #endif

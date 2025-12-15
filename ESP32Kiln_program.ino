@@ -489,7 +489,7 @@ void START_Program() {
                      Prefs[PRF_PID_KI].value.vfloat,
                      Prefs[PRF_PID_KD].value.vfloat);
 #elif defined(PID_AUTOTUNEPID)
-  KilnPID.setTuningMethod(TuningMethod::Manual);
+  KilnPID.setTuningMethod(TuningMethod::ZieglerNichols);
   KilnPID.setManualGains(Prefs[PRF_PID_KP].value.vfloat,
                          Prefs[PRF_PID_KI].value.vfloat,
                          Prefs[PRF_PID_KD].value.vfloat);
@@ -505,18 +505,19 @@ void START_Program() {
   //tell the PID to range between 0 and the full window size/PID_WINDOW_DIVIDER. It's divided by 100 (default value of PID_WINDOW_DIVIDER) to have minimal window size faster above 1/25s - so SSR will be able to switch (zero switch)
 
 #ifdef PID_QUICKPID
-  KilnPID.SetOutputLimits(0, Prefs[PRF_PID_WINDOW].value.uint16 / PID_WINDOW_DIVIDER * 0.1);
-  KilnPID.SetSampleTimeUs(Prefs[PRF_PID_WINDOW].value.uint16 * 1000);
+  KilnPID.SetOutputLimits(0, Prefs[PRF_PID_WINDOW].value.uint16);
+  KilnPID.SetSampleTimeUs(Prefs[PRF_PID_MEASURE_INTERVAL].value.uint16 * 1000);
   KilnPID.SetMode(KilnPID.Control::automatic);
 #elif defined(PID_PID_V1)
-  KilnPID.SetOutputLimits(MIN_WINDOW, Prefs[PRF_PID_WINDOW].value.uint16 / PID_WINDOW_DIVIDER * 0.1);
-  KilnPID.SetSampleTime(Prefs[PRF_PID_WINDOW].value.uint16);
+  // KilnPID.SetOutputLimits(0, 1);
+  KilnPID.SetOutputLimits(0, Prefs[PRF_PID_WINDOW].value.uint16);
+  KilnPID.SetSampleTime(Prefs[PRF_PID_MEASURE_INTERVAL].value.uint16);
   KilnPID.SetMode(AUTOMATIC);
 #elif defined(PID_AUTOTUNEPID)
   KilnPID.setSetpoint(kiln_temp);
-  KilnPID.setOscillationMode(OscillationMode::Half);
+  KilnPID.setOscillationMode(OscillationMode::Normal);
   KilnPID.setOperationalMode(OperationalMode::Auto);
-  KilnPID.setOscillationMode(true);
+  KilnPID.enableAntiWindup(true);
 #endif
 
   DBG dbgLog(LOG_INFO, "[PRG] Trying to start log - window size:%d\n", Prefs[PRF_LOG_WINDOW].value.uint16);
@@ -608,6 +609,9 @@ void Program_Loop(void *parameter) {
             if (LCD_Main == MAIN_VIEW2 && (Program_run_state == PR_RUNNING || Program_run_state == PR_PAUSED))
               LCD_display_mainv2();
             DBG dbgLog(LOG_INFO, "[PRG] Pid_out RAW:%.2f Pid_out:%.2f Now-window:%d WindowSize:%d Prg_state:%d\n", pid_out, pid_out * PID_WINDOW_DIVIDER, (now - windowStartTime), Prefs[PRF_PID_WINDOW].value.uint16, (byte)Program_run_state);
+#ifdef PID_AUTOTUNEPID
+            DBG dbgLog(LOG_INFO, "[PRG] Kp:%.5f Ki:%.5f Kd:%.5f\n", KilnPID.getKp(), KilnPID.getKi(), KilnPID.getKd());
+#endif
           }
         }
       }
@@ -616,77 +620,93 @@ void Program_Loop(void *parameter) {
 #if defined(PID_QUICKPID) || defined(PID_PID_V1)
       if (Program_run_state == PR_RUNNING || Program_run_state == PR_PAUSED || Program_run_state == PR_THRESHOLD) {
         // KilnPID.Compute();
-        if (KilnPID.Compute()) windowStartTime = millis();
+        if (KilnPID.Compute()) windowStartTime = now;
 
-        DBG dbgLog(LOG_INFO, "[PRG] Now:%d windowStartTime:%d nextSwitchTime:%d Now-window:%d Pid_out:%.2f SSR_On:%d\n", now, windowStartTime, nextSwitchTime, (long)(millis() - windowStartTime), pid_out, SSR_On);
+        long pid = pid_out /*  * PID_WINDOW_DIVIDER */;
+        long window = millis() - windowStartTime;
+        // long window = millis() - windowStartTime;
+        // if (window > Prefs[PRF_PID_WINDOW].value.uint16) {  //time to shift the Relay Window
+        //   windowStartTime += Prefs[PRF_PID_WINDOW].value.uint16;
+        // }
 
-        if ((pid_out * PID_WINDOW_DIVIDER) > (long)(now - windowStartTime)) {
+        // if (pid > 0 && pid > window / PID_WINDOW_DIVIDER) {
+        if (pid > window /*  / PID_WINDOW_DIVIDER */) {
           if (now > nextSwitchTime) {
             nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
             Enable_SSR();
+            DBG dbgLog(LOG_INFO, "[PRG] Now:%d Now-window:%d RAW pid_out:%.2f pid:%d SSR_On:%d\n",
+                       now, window, pid_out, pid, SSR_On);
           }
-        } else if (SSR_On && pid_out == 0) {
-          nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
+        } else {
+          // if (now > nextSwitchTime) {
+          if (SSR_On) {
+            nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
+          }
           Disable_SSR();
         }
+      }
 #endif
 #ifdef PID_AUTOTUNEPID
-        if (Program_run_state == PR_RUNNING || Program_run_state == PR_PAUSED || Program_run_state == PR_THRESHOLD || Program_run_state == PR_CALIBRATE) {
-          KilnPID.update(kiln_temp);
-          pid_out = KilnPID.getOutput();
+      if (Program_run_state == PR_RUNNING || Program_run_state == PR_PAUSED || Program_run_state == PR_THRESHOLD || Program_run_state == PR_CALIBRATE) {
+        KilnPID.update(kiln_temp);
+        pid_out = KilnPID.getOutput();
 
-          DBG dbgLog(LOG_INFO, "[PRG] Now:%d nextSwitchTime:%d Pid_out:%.2f SSR_On:%d\n", now, nextSwitchTime, pid_out, SSR_On);
-          // if ((long)(now - windowStartTime) > Prefs[PRF_PID_WINDOW].value.uint16) {
-          // windowStartTime += Prefs[PRF_PID_WINDOW].value.uint16;
+        long pid = pid_out /*  * PID_WINDOW_DIVIDER */;
+        long window = millis() - windowStartTime;
+
+        if (window > Prefs[PRF_PID_WINDOW].value.uint16) {
+          windowStartTime += Prefs[PRF_PID_WINDOW].value.uint16;
+        }
+        if (pid_out > window) {
+          // if (now > nextSwitchTime) {
+          // nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
+          Enable_SSR();
+          DBG dbgLog(LOG_INFO, "[PRG] Now:%d RAW pid_out:%.2f pid_out:%.2f SSR_On:%d\n", now, pid_out, pid_out * PID_WINDOW_DIVIDER, SSR_On);
           // }
-          if (pid_out > 0) {
-            if (now > nextSwitchTime) {
-              nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
-              Enable_SSR();
-            }
-          } else if (SSR_On && pid_out == 0) {
-            nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
-            Disable_SSR();
-          }
-#endif
+        } else {
+          // if (SSR_On) {
+          // nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
+          // }
+          Disable_SSR();
         }
       }
-
-      // yield();
-      vTaskDelay(10);  // This should enable to run other tasks on this core
+#endif
     }
+    // yield();
+    vTaskDelay(10);  // This should enable to run other tasks on this core
   }
+}
 
-  /*
+/*
 ** Main setup function for programs module
 */
-  void Program_Setup() {
+void Program_Setup() {
 
-    // Start interupt timer handler - 1s
-    // Create semaphore to inform us when the timer has fired
-    timerSemaphore = xSemaphoreCreateBinary();
+  // Start interupt timer handler - 1s
+  // Create semaphore to inform us when the timer has fired
+  timerSemaphore = xSemaphoreCreateBinary();
 
-    // has now only 1 parameter (frequency). There is an automatic calculation of the divider using different clock sources to achieve the selected frequency.
-    timer = timerBegin(1000000);
+  // has now only 1 parameter (frequency). There is an automatic calculation of the divider using different clock sources to achieve the selected frequency.
+  timer = timerBegin(1000000);
 
-    // Attach onTimer function to our timer.
-    timerAttachInterrupt(timer, &onTimer);
+  // Attach onTimer function to our timer.
+  timerAttachInterrupt(timer, &onTimer);
 
-    // Set alarm to call onTimer function every second (value in microseconds).
-    // Repeat the alarm (third parameter)
-    timerAlarm(timer, 1000000, true, 0);
+  // Set alarm to call onTimer function every second (value in microseconds).
+  // Repeat the alarm (third parameter)
+  timerAlarm(timer, 100000, true, 0);
 
 
-    // For testing!!!
-    //  Load_program("test_up_down.txt");
-    //  Load_program_to_run();
+  // For testing!!!
+  //  Load_program("test_up_down.txt");
+  //  Load_program_to_run();
 
-    xTaskCreatePinnedToCore(
-      //  xTaskCreate(
-      Program_Loop,   /* Task function. */
-      "Program_loop", /* String with name of task. */
-      8192,           /* Stack size in bytes. */
-      NULL,           /* Parameter passed as input of the task */
-      1,              /* Priority of the task. */
-      NULL, 0);       /* Task handle. */
-  }
+  xTaskCreatePinnedToCore(
+    //  xTaskCreate(
+    Program_Loop,   /* Task function. */
+    "Program_loop", /* String with name of task. */
+    8192,           /* Stack size in bytes. */
+    NULL,           /* Parameter passed as input of the task */
+    1,              /* Priority of the task. */
+    NULL, 0);       /* Task handle. */
+}

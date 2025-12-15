@@ -42,10 +42,10 @@ void CalibrateInit() {
 
 #ifdef PID_QUICKPID
   myPid = new QuickPID(&Input, &Output, &Setpoint, 0, 0, 0,
-                       QuickPID.pMode::pOnError,
-                       QuickPID.dMode::dOnError,
-                       QuickPID.iAwMode::iAwClamp,
-                       QuickPID.Action::direct);
+                       myPid->pMode::pOnError,
+                       myPid->dMode::dOnError,
+                       myPid->iAwMode::iAwClamp,
+                       myPid->Action::direct);
 #elif defined(PID_PID_V1)
   myPid = new PID(&input, &output, &setpoint, kp, ki, kd, P_ON_M, DIRECT);
 #endif
@@ -63,10 +63,10 @@ void CalibrateInit() {
 
   myPid->SetOutputLimits(MIN_WINDOW, outputSpan * 0.1);
 #ifdef PID_QUICKPID
-  myPid->SetProportionalMode(QuickPID.pMode::pOnError);
-  myPid->SetDerivativeMode(QuickPID.dMode::dOnError);
-  myPid->SetAntiWindupMode(QuickPID.iAwMode::iAwClamp);
-  myPid->SetMode(QuickPID.Control::automatic);
+  myPid->SetProportionalMode(myPid->pMode::pOnError);
+  myPid->SetDerivativeMode(myPid->dMode::dOnError);
+  myPid->SetAntiWindupMode(myPid->iAwMode::iAwClamp);
+  myPid->SetMode(myPid->Control::automatic);
   myPid->SetSampleTimeUs((outputSpan - 1) * 1000);
 #elif defined(PID_PID_V1)
   myPid->SetSampleTime(outputSpan - 1);
@@ -103,7 +103,7 @@ void HandleCalibration() {
       Program_run_state = PR_ENDED;
 #ifdef PID_QUICKPID
       myPid->SetTunings(Kp, Ki, Kd);  // update PID with the new tunings
-      myPid->SetMode(QuickPID.Control::manual);
+      myPid->SetMode(myPid->Control::manual);
 #elif defined(PID_PID_V1)
       myPid->SetTunings(kp, ki, kd);  // update PID with the new tunings
       myPid->SetMode(MANUAL);
@@ -123,8 +123,8 @@ void HandleCalibration() {
       if (startup && Input > Setpoint - 5) {
         startup = false;
         Output -= 9;
-        myPid->SetMode(QuickPID.Control::manual);
-        myPid->SetMode(QuickPID.Control::automatic);
+        myPid->SetMode(myPid->Control::manual);
+        myPid->SetMode(myPid->Control::automatic);
       }
       Update_TemperatureA();
       Input = kiln_temp;
