@@ -300,8 +300,15 @@ void END_Program() {
 
   DBG dbgLog(LOG_INFO, "[PRG] Ending program cleanly\n");
   Program_run_state = PR_ENDED;
-  KilnPID.Reset();
+
+#ifdef PID_QUICKPID
   KilnPID.SetMode(KilnPID.Control::manual);
+#elif defined(PID_PID_V1)
+  KilnPID.SetMode(MANUAL);
+#elif defined(PID_AUTOTUNEPID)
+  KilnPID.setOperationalMode(OperationalMode::Hold);
+#endif
+
   Disable_SSR();
 
 #ifdef EMR_RELAY_PIN
@@ -424,8 +431,11 @@ void Program_calculate_steps(boolean prg_start = false) {
           DBG dbgLog(LOG_DEBUG, "[PRG] temp_inc:%f Step_temp:%d Step-1_temp:%d\n", temp_incr, Program_run[Program_run_step].temp, Program_run[Program_run_step - 1].temp);
         } else {  // or this is teh first one?
           DBG dbgLog(LOG_DEBUG, "[DBG] First step.\n");
-          // set_temp = kiln_temp;
-          set_temp = Program_run[Program_run_step].temp;
+          set_temp = kiln_temp;
+#if defined(PID_AUTOTUNEPID)
+          KilnPID.setSetpoint(set_temp);
+#endif
+          // set_temp = Program_run[Program_run_step].temp;
           temp_incr = (float)(Program_run[Program_run_step].temp - kiln_temp) / (Program_run[Program_run_step].togo * 60);
         }
         Program_recalculate_ETA(false);  // recalculate ETA for normal step
@@ -436,6 +446,9 @@ void Program_calculate_steps(boolean prg_start = false) {
         step_start = time(NULL);
         next_step_end = step_start + Program_run[Program_run_step].dwell * 60;
         set_temp = Program_run[Program_run_step].temp;
+#if defined(PID_AUTOTUNEPID)
+        KilnPID.setSetpoint(set_temp);
+#endif
         DBG dbgLog(LOG_DEBUG, "[PRG] Next step:%d Start step:%d Togo:%d Run_step:%d/%d Set_temp:%f\n", next_step_end, step_start, Program_run[Program_run_step].dwell, Program_run_step, Program_run_size, set_temp);
         Program_recalculate_ETA(true);  // recalculate ETA for dwell
       }
@@ -464,10 +477,24 @@ void START_Program() {
   Enable_EMR();
 #endif
 
-  KilnPID.SetTunings(Prefs[PRF_PID_KP].value.vfloat, Prefs[PRF_PID_KI].value.vfloat, Prefs[PRF_PID_KD].value.vfloat);  // set actual PID parameters
-  KilnPID.SetProportionalMode(KilnPID.pMode::pOnError);
-  KilnPID.SetDerivativeMode(KilnPID.dMode::dOnError);
-  KilnPID.SetAntiWindupMode(KilnPID.iAwMode::iAwClamp);
+#ifdef PID_QUICKPID
+  KilnPID.SetTunings(Prefs[PRF_PID_KP].value.vfloat,
+                     Prefs[PRF_PID_KI].value.vfloat,
+                     Prefs[PRF_PID_KD].value.vfloat,
+                     KilnPID.pMode::pOnMeas,
+                     KilnPID.dMode::dOnMeas,
+                     KilnPID.iAwMode::iAwCondition);
+#elif defined(PID_PID_V1)
+  KilnPID.SetTunings(Prefs[PRF_PID_KP].value.vfloat,
+                     Prefs[PRF_PID_KI].value.vfloat,
+                     Prefs[PRF_PID_KD].value.vfloat);
+#elif defined(PID_AUTOTUNEPID)
+  KilnPID.setTuningMethod(TuningMethod::ZieglerNichols);
+  KilnPID.setManualGains(Prefs[PRF_PID_KP].value.vfloat,
+                         Prefs[PRF_PID_KI].value.vfloat,
+                         Prefs[PRF_PID_KD].value.vfloat);
+#endif
+
   Program_run_start = time(NULL);
   Program_calculate_steps(true);
   windowStartTime = millis();
@@ -476,9 +503,22 @@ void START_Program() {
 
 
   //tell the PID to range between 0 and the full window size/PID_WINDOW_DIVIDER. It's divided by 100 (default value of PID_WINDOW_DIVIDER) to have minimal window size faster above 1/25s - so SSR will be able to switch (zero switch)
+
+#ifdef PID_QUICKPID
   KilnPID.SetOutputLimits(0, Prefs[PRF_PID_WINDOW].value.uint16);
+  KilnPID.SetSampleTimeUs(Prefs[PRF_PID_MEASURE_INTERVAL].value.uint16 * 1000);
   KilnPID.SetMode(KilnPID.Control::automatic);
-  KilnPID.SetSampleTimeUs(Prefs[PRF_PID_WINDOW].value.uint16);
+#elif defined(PID_PID_V1)
+  // KilnPID.SetOutputLimits(0, 1);
+  KilnPID.SetOutputLimits(0, Prefs[PRF_PID_WINDOW].value.uint16);
+  KilnPID.SetSampleTime(Prefs[PRF_PID_MEASURE_INTERVAL].value.uint16);
+  KilnPID.SetMode(AUTOMATIC);
+#elif defined(PID_AUTOTUNEPID)
+  KilnPID.setSetpoint(kiln_temp);
+  KilnPID.setOscillationMode(OscillationMode::Normal);
+  KilnPID.setOperationalMode(OperationalMode::Auto);
+  KilnPID.enableAntiWindup(true);
+#endif
 
   DBG dbgLog(LOG_INFO, "[PRG] Trying to start log - window size:%d\n", Prefs[PRF_LOG_WINDOW].value.uint16);
   if (Prefs[PRF_LOG_WINDOW].value.uint16) {  // if we should create log file
@@ -499,10 +539,12 @@ void SAFETY_Check() {
     DBG dbgLog(LOG_ERR, "[PRG] Safety check failed - MAX temperature > %d\n", Prefs[PRF_MAX_TEMP].value.uint16);
     ABORT_Program(PR_ERR_TOO_HOT);
   }
+#ifdef MAX31865_E
   if (case_temp > Prefs[PRF_MAX_HOUSING_TEMP].value.uint16) {
     DBG dbgLog(LOG_ERR, "[PRG] Safety check failed - MAX housing temperature > %d\n", Prefs[PRF_MAX_HOUSING_TEMP].value.uint16);
     ABORT_Program(PR_ERR_TOO_HOT_HOUSING);
   }
+#endif
 }
 
 
@@ -553,7 +595,7 @@ void Program_Loop(void *parameter) {
 
       // Calibrate
       if (Program_run_state == PR_CALIBRATE) {
-        HandleCalibration(now);
+        HandleCalibration();
       } else {
 
         if (Program_run_state == PR_RUNNING || Program_run_state == PR_PAUSED || Program_run_state == PR_THRESHOLD) {
@@ -567,28 +609,69 @@ void Program_Loop(void *parameter) {
             if (LCD_Main == MAIN_VIEW2 && (Program_run_state == PR_RUNNING || Program_run_state == PR_PAUSED))
               LCD_display_mainv2();
             DBG dbgLog(LOG_INFO, "[PRG] Pid_out RAW:%.2f Pid_out:%.2f Now-window:%d WindowSize:%d Prg_state:%d\n", pid_out, pid_out * PID_WINDOW_DIVIDER, (now - windowStartTime), Prefs[PRF_PID_WINDOW].value.uint16, (byte)Program_run_state);
+#ifdef PID_AUTOTUNEPID
+            DBG dbgLog(LOG_INFO, "[PRG] Kp:%.5f Ki:%.5f Kd:%.5f\n", KilnPID.getKp(), KilnPID.getKi(), KilnPID.getKd());
+#endif
           }
         }
       }
 
       // Do the PID stuff
+#if defined(PID_QUICKPID) || defined(PID_PID_V1)
       if (Program_run_state == PR_RUNNING || Program_run_state == PR_PAUSED || Program_run_state == PR_THRESHOLD) {
-        if (KilnPID.Compute()) windowStartTime = millis();
+        // KilnPID.Compute();
+        if (KilnPID.Compute()) windowStartTime = now;
 
-        DBG dbgLog(LOG_INFO, "[PRG] Now:%d windowStartTime:%d nextSwitchTime:%d Now-window:%d Pid_out:%.2f SSR_On:%d\n", now, windowStartTime, nextSwitchTime, now - windowStartTime, pid_out, SSR_On);
+        long pid = pid_out /*  * PID_WINDOW_DIVIDER */;
+        long window = millis() - windowStartTime;
+        // long window = millis() - windowStartTime;
+        // if (window > Prefs[PRF_PID_WINDOW].value.uint16) {  //time to shift the Relay Window
+        //   windowStartTime += Prefs[PRF_PID_WINDOW].value.uint16;
+        // }
 
-        if (!SSR_On && ((pid_out * PID_WINDOW_DIVIDER) > (now - windowStartTime))) {
+        // if (pid > 0 && pid > window / PID_WINDOW_DIVIDER) {
+        if (pid > window /*  / PID_WINDOW_DIVIDER */) {
           if (now > nextSwitchTime) {
             nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
             Enable_SSR();
+            DBG dbgLog(LOG_INFO, "[PRG] Now:%d Now-window:%d RAW pid_out:%.2f pid:%d SSR_On:%d\n",
+                       now, window, pid_out, pid, SSR_On);
           }
-        } else if (SSR_On && ((pid_out == 0) || (pid_out * PID_WINDOW_DIVIDER) < (now - windowStartTime))) {
-          nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
+        } else {
+          // if (now > nextSwitchTime) {
+          if (SSR_On) {
+            nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
+          }
           Disable_SSR();
         }
       }
-    }
+#endif
+#ifdef PID_AUTOTUNEPID
+      if (Program_run_state == PR_RUNNING || Program_run_state == PR_PAUSED || Program_run_state == PR_THRESHOLD || Program_run_state == PR_CALIBRATE) {
+        KilnPID.update(kiln_temp);
+        pid_out = KilnPID.getOutput();
 
+        long pid = pid_out /*  * PID_WINDOW_DIVIDER */;
+        long window = millis() - windowStartTime;
+
+        if (window > Prefs[PRF_PID_WINDOW].value.uint16) {
+          windowStartTime += Prefs[PRF_PID_WINDOW].value.uint16;
+        }
+        if (pid_out > window) {
+          // if (now > nextSwitchTime) {
+          // nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
+          Enable_SSR();
+          DBG dbgLog(LOG_INFO, "[PRG] Now:%d RAW pid_out:%.2f pid_out:%.2f SSR_On:%d\n", now, pid_out, pid_out * PID_WINDOW_DIVIDER, SSR_On);
+          // }
+        } else {
+          // if (SSR_On) {
+          // nextSwitchTime = now + Prefs[PRF_PID_WINDOW].value.uint16;
+          // }
+          Disable_SSR();
+        }
+      }
+#endif
+    }
     // yield();
     vTaskDelay(10);  // This should enable to run other tasks on this core
   }
@@ -611,7 +694,7 @@ void Program_Setup() {
 
   // Set alarm to call onTimer function every second (value in microseconds).
   // Repeat the alarm (third parameter)
-  timerAlarm(timer, 1000000, true, 0);
+  timerAlarm(timer, 100000, true, 0);
 
 
   // For testing!!!

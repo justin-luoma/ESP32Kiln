@@ -329,7 +329,7 @@
                               <label for="PID_Window" class="col-sm-3 col-form-label"> PID Window size (ms) </label>
                               <div class="col-sm-9">
                                     <div class="input-group ">
-                                          <input type="number" name="PID_Window" class="form-control" min="1" max="9999"
+                                          <input type="number" name="PID_Window" class="form-control" min="1" max="20000"
                                                 value="%PID_Window%"
                                                 title="Time window used to recalculate PID parameters">
                                           <span class="input-group-text"> ms</span>
@@ -340,7 +340,7 @@
                               <label for="PID_Measure_Interval" class="col-sm-3 col-form-label"> PID Measurement Interval (ms) </label>
                               <div class="col-sm-9">
                                     <div class="input-group ">
-                                          <input type="number" name="PID_Measure_Interval" class="form-control" min="1" max="9999"
+                                          <input type="number" name="PID_Measure_Interval" class="form-control" min="1" max="10000"
                                                 value="%PID_Measure_Interval%"
                                                 title="Time window used to recalculate PID parameters">
                                           <span class="input-group-text"> ms</span>
@@ -350,21 +350,21 @@
                         <div class="mb-3 row">
                               <label for="PID_Kp" class="col-sm-3 col-form-label"> PID Kp (Proportional) </label>
                               <div class="col-sm-9">
-                                    <input type="number" name="PID_Kp" class="form-control" min="0" max="999" step="0.01"
+                                    <input type="number" name="PID_Kp" class="form-control" min="0" max="9999" step="0.0001"
                                           value="%PID_Kp%">
                               </div>
                         </div>
                         <div class="mb-3 row">
                               <label for="PID_Ki" class="col-sm-3 col-form-label"> PID Ki (Integral) </label>
                               <div class="col-sm-9">
-                                    <input type="number" name="PID_Ki" class="form-control" min="0" max="999" step="0.01"
+                                    <input type="number" name="PID_Ki" class="form-control" min="0" max="9999" step="0.0001"
                                           value="%PID_Ki%">
                               </div>
                         </div>
                         <div class="mb-3 row">
                               <label for="PID_Kd" class="col-sm-3 col-form-label"> PID Kd (Derivative) </label>
                               <div class="col-sm-9">
-                                    <input type="number" name="PID_Kd" class="form-control" min="0" max="999" step="0.01"
+                                    <input type="number" name="PID_Kd" class="form-control"  min="0" max="9999" step="0.0001"
                                           value="%PID_Kd%">
                               </div>
                         </div>

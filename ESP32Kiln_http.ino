@@ -459,8 +459,8 @@ void handleUpload(AsyncWebServerRequest *request, String filename, size_t index,
       abort = true;  // this will never happend...
       request->redirect("/programs");
     } else {  // Everything went fine - commit file
-      Generate_INDEX();
       request->redirect("/programs/index.html");
+      Generate_INDEX();
     }
   }
 }
@@ -630,8 +630,10 @@ String handleVars(const String &var) {
 
   if (var == "KILN_TEMP") return String(kiln_temp);
   else if (var == "SET_TEMP") return String(set_temp);
+#ifdef MAX31865_E
   else if (var == "ENV_TEMP") return String(int_temp);
   else if (var == "CASE_TEMP") return String(case_temp);
+#endif
   else if (var == "HEAT_TIME") return String((pid_out * PID_WINDOW_DIVIDER / Prefs[PRF_PID_WINDOW].value.uint16) * 100);
   else if (var == "TEMP_CHANGE") return String(temp_incr);
   else if (var == "STEP") {
@@ -762,11 +764,11 @@ void SETUP_WebServer(void) {
 
 
   if (Prefs[PRF_HTTP_JS_LOCAL].value.str) {
-    server.on("/js/jquery-3.5.1.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
-      AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/js/jquery-3.5.1.min.js", "text/javascript");
-      response->addHeader("Content-Encoding", "gzip");
-      request->send(response);
-    });
+    // server.on("/js/jquery-3.7.1.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
+    //   AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/js/jquery-3.7.1.min.js", "text/javascript");
+    //   response->addHeader("Content-Encoding", "gzip");
+    //   request->send(response);
+    // });
     server.on("/js/Chart.2.9.3.bundle.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
       AsyncWebServerResponse *response = request->beginResponse(SPIFFS, "/js/Chart.2.9.3.bundle.min.js", "text/javascript");
       response->addHeader("Content-Encoding", "gzip");
@@ -778,7 +780,7 @@ void SETUP_WebServer(void) {
       request->send(response);
     });
   } else {
-    server.on("/js/jquery-3.5.1.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
+    server.on("/js/jquery-3.7.1.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
       request->redirect(JS_JQUERY);
     });
     server.on("/js/Chart.2.9.3.bundle.min.js", HTTP_GET, [](AsyncWebServerRequest *request) {
